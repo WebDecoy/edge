@@ -1,0 +1,17 @@
+# WebDecoy clearance edge validator (FR7).
+# Deploy on YOUR Cloudflare zone: set WD_SITE_KEY to your WebDecoy site key
+# (shown in Integrations → Clearance setup) and add a route for the hostnames
+# you want validated. The worker fails open on any error.
+
+name = "webdecoy-clearance-validator"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+
+[vars]
+WD_SITE_KEY = "YOUR-SITE-KEY"
+WD_API_BASE = "https://ingest.webdecoy.com"
+
+# Example route (uncomment and adjust):
+# routes = [
+#   { pattern = "example.com/*", zone_name = "example.com" }
+# ]

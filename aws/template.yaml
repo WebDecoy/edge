@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  WebDecoy clearance edge validator (Lambda@Edge). Provisions the function, its
+  IAM execution role (Lambda@Edge trust), and a published version whose ARN you
+  attach to your CloudFront distribution's viewer-request behavior. MUST be
+  launched in us-east-1 (a Lambda@Edge requirement).
+
+Parameters:
+  SiteKey:
+    Type: String
+    Description: Your publishable WebDecoy site key (organization id).
+  ApiBase:
+    Type: String
+    Default: https://ingest.webdecoy.com
+    Description: WebDecoy ingest origin (issuance + config endpoints).
+  CodeS3Bucket:
+    Type: String
+    Description: >
+      S3 bucket holding the built function zip (dist/ from `npm run build`,
+      with src/config.ts SiteKey/ApiBase set, zipped). Must be in us-east-1.
+  CodeS3Key:
+    Type: String
+    Default: clearance-lambda.zip
+    Description: S3 key of the function zip.
+
+Resources:
+  ValidatorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - edgelambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  ValidatorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Role: !GetAtt ValidatorRole.Arn
+      MemorySize: 128
+      Timeout: 5
+      Code:
+        S3Bucket: !Ref CodeS3Bucket
+        S3Key: !Ref CodeS3Key
+
+  # A published version is required to associate a function with CloudFront.
+  ValidatorVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref ValidatorFunction
+
+Outputs:
+  FunctionVersionArn:
+    Description: >
+      Attach THIS ARN to your CloudFront distribution's viewer-request behavior
+      (Behaviors → Edit → Function associations → Lambda@Edge, Viewer request).
+    Value: !Ref ValidatorVersion
+  Note:
+    Value: !Sub >
+      Deployed with SiteKey=${SiteKey}, ApiBase=${ApiBase}. Roll out in monitor
+      mode first and run the dashboard deployment check before enforcing.
