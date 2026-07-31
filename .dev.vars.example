@@ -1,0 +1,10 @@
+# Local development values for `wrangler dev`.
+# Copy to .dev.vars — which is gitignored — and fill in.
+#
+# Neither of these is a secret: WD_SITE_KEY identifies your organization to the
+# ingest endpoint and is visible in any deployed Worker's configuration. It is
+# declared here because a Worker deployed without it reports under no
+# organization, which looks exactly like the Worker not running.
+
+WD_SITE_KEY="YOUR-SITE-KEY"
+WD_API_BASE="https://ingest.webdecoy.com"
