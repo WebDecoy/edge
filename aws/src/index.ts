@@ -17,6 +17,7 @@
 
 import { promises as dnsPromises } from 'node:dns';
 import { CONFIG } from './config';
+import { recordVerdict } from './telemetry';
 import { verifyToken, matchesScope, type SigningKey } from './token';
 import { verifyBot, type AllowToggles, type DnsResolver } from './verified-bots';
 
@@ -34,6 +35,21 @@ const CONFIG_TTL_MS = 60_000;
 const SERVICE_TOKEN_HEADER = 'x-wd-service-token';
 const CLEARANCE_COOKIE = 'wd_clearance';
 const VERDICT_HEADER = 'x-wd-clearance';
+// Deploy verification (#139): a request carrying this query param short-circuits
+// to a JSON heartbeat so the dashboard can confirm the validator is live.
+const HEALTHCHECK_PARAM = '__wd_clearance_check';
+
+/** Extract the health-check nonce from a CloudFront querystring, or null. */
+export function healthNonce(querystring: string): string | null {
+  for (const part of querystring.split('&')) {
+    const eq = part.indexOf('=');
+    const key = eq < 0 ? part : part.slice(0, eq);
+    if (decodeURIComponent(key) === HEALTHCHECK_PARAM) {
+      return eq < 0 ? '' : decodeURIComponent(part.slice(eq + 1));
+    }
+  }
+  return null;
+}
 
 let cachedConfig: ValidatorConfig | null = null;
 let cachedAt = 0;
@@ -54,6 +70,7 @@ interface CfRequest {
   clientIp: string;
   method: string;
   uri: string;
+  querystring: string;
   headers: CfHeaders;
 }
 interface CfResponse {
@@ -75,10 +92,26 @@ export async function handler(event: {
 }
 
 async function handle(request: CfRequest): Promise<CfRequest | CfResponse> {
+  const nonce = healthNonce(request.querystring || '');
   const config = await getConfig();
+
+  // Deploy heartbeat (#139): answered by the validator directly; if it reaches
+  // origin instead, the dashboard knows the validator isn't associated.
+  if (nonce !== null) {
+    return healthResponse(nonce, config ? config.mode : 'unknown');
+  }
+
   if (!config) return request; // config unreachable -> fail open
 
   const verdict = await evaluate(request, config);
+
+  // Verdict telemetry (#435). Awaited, unlike the Worker's: Lambda@Edge may be
+  // frozen the instant this handler returns, so a background promise reports
+  // nothing. recordVerdict only returns one when a window actually closed, so
+  // this costs 1 request in N and is capped well under the viewer-request
+  // budget. It never rejects.
+  const flush = recordVerdict(verdict.label, config.mode, CONFIG.siteKey, CONFIG.apiBase);
+  if (flush) await flush;
 
   if (verdict.pass || config.mode !== 'enforce') {
     setHeader(request.headers, VERDICT_HEADER, verdict.label);
@@ -170,6 +203,21 @@ function readCookie(header: string, name: string): string | null {
  * Worker (canonical "wdfp1" — golden f233cd…681da), so a decoy-triggered deny
  * covers a token minted through either edge.
  */
+/** Deploy-verification heartbeat. Permissive CORS so the dashboard can read it
+ *  cross-origin from the customer's own site; no-store so it's never cached. */
+function healthResponse(nonce: string, mode: string): CfResponse {
+  return {
+    status: '200',
+    statusDescription: 'OK',
+    headers: {
+      'content-type': [{ key: 'Content-Type', value: 'application/json' }],
+      'cache-control': [{ key: 'Cache-Control', value: 'no-store' }],
+      'access-control-allow-origin': [{ key: 'Access-Control-Allow-Origin', value: '*' }],
+    },
+    body: JSON.stringify({ wd_clearance: true, nonce, mode, site_key: CONFIG.siteKey }),
+  };
+}
+
 function challenge(request: CfRequest): CfResponse {
   const accept = headerValue(request.headers, 'accept');
   if (request.method !== 'GET' || !accept.includes('text/html')) {

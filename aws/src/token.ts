@@ -6,6 +6,7 @@
  */
 
 import { createPublicKey, verify as cryptoVerify } from 'node:crypto';
+import { resolveRoute } from './route-resolution';
 
 export interface Claims {
   kid: string;
@@ -64,18 +65,9 @@ export function verifyToken(
 }
 
 /**
- * Route pattern semantics — identical to the backend IsValidRoutePattern and the
- * Cloudflare Worker: a '/'-rooted path; a trailing "/*" matches the base path and
- * everything under it, otherwise an exact match.
+ * Whether any protected path covers this request path. The rule is the shared
+ * one in route-resolution.ts (#1125); this stays the handler's entry point.
  */
 export function matchesScope(path: string, patterns: string[]): boolean {
-  for (const p of patterns) {
-    if (p.endsWith('/*')) {
-      const base = p.slice(0, -2) || '/';
-      if (path === base || path.startsWith(base + '/')) return true;
-    } else if (path === p) {
-      return true;
-    }
-  }
-  return false;
+  return resolveRoute(path, patterns).covering.length > 0;
 }
