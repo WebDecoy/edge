@@ -7,5 +7,5 @@ export const CONFIG = {
   /** Publishable WebDecoy site key (the organization id). */
   siteKey: 'YOUR-SITE-KEY',
   /** WebDecoy ingest origin (issuance + config endpoints). */
-  apiBase: 'https://ingest.webdecoy.com',
+  apiBase: 'https://in.webdecoy.com',
 };

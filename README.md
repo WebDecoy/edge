@@ -33,7 +33,7 @@ your Cloudflare account. Set two variables:
 | Variable | What it is |
 |---|---|
 | `WD_SITE_KEY` | Your WebDecoy organization id. Integrations → Cloudflare in the app. |
-| `WD_API_BASE` | Leave as `https://ingest.webdecoy.com` unless told otherwise. |
+| `WD_API_BASE` | Leave as `https://in.webdecoy.com` unless told otherwise. |
 
 Without a correct `WD_SITE_KEY` the Worker runs and reports under no organization, which
 looks identical to it not working.

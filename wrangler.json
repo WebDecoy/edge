@@ -8,6 +8,6 @@
   },
   "vars": {
     "WD_SITE_KEY": "YOUR-SITE-KEY",
-    "WD_API_BASE": "https://ingest.webdecoy.com"
+    "WD_API_BASE": "https://in.webdecoy.com"
   }
 }

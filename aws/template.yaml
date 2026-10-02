@@ -11,7 +11,7 @@ Parameters:
     Description: Your publishable WebDecoy site key (organization id).
   ApiBase:
     Type: String
-    Default: https://ingest.webdecoy.com
+    Default: https://in.webdecoy.com
     Description: WebDecoy ingest origin (issuance + config endpoints).
   CodeS3Bucket:
     Type: String
