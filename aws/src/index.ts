@@ -161,21 +161,57 @@ async function evaluate(request: CfRequest, config: ValidatorConfig): Promise<Ve
   return { pass: true, label: 'valid' };
 }
 
+/**
+ * Outage behavior (#1245): a failed fetch pauses fetching for 30s (or the
+ * answer's Retry-After, clamped to 5s..5min), serving the stale config
+ * meanwhile, and concurrent misses share one fetch. Before, every request after
+ * the cache window waited out the 3s timeout on a dead WebDecoy.
+ */
+const CONFIG_FAILURE_BACKOFF_MS = 30_000;
+let configRetryAt = 0;
+let configInFlight: Promise<ValidatorConfig | null> | null = null;
+
+/** Test seam: forget the cached config, backoff and in-flight fetch. */
+export function __resetConfigState(): void {
+  cachedConfig = null;
+  cachedAt = 0;
+  configRetryAt = 0;
+  configInFlight = null;
+}
+
 async function getConfig(): Promise<ValidatorConfig | null> {
   const now = Date.now();
   if (cachedConfig && now - cachedAt < CONFIG_TTL_MS) return cachedConfig;
+  if (now < configRetryAt) return cachedConfig;
+  if (configInFlight) return cachedConfig ?? configInFlight;
+  configInFlight = fetchConfig(now);
   try {
-    const res = await fetch(
+    return await configInFlight;
+  } finally {
+    configInFlight = null;
+  }
+}
+
+async function fetchConfig(now: number): Promise<ValidatorConfig | null> {
+  let res: Response | null = null;
+  try {
+    res = await fetch(
       `${CONFIG.apiBase}/api/v1/clearance/config?aid=${encodeURIComponent(CONFIG.siteKey)}`,
       { signal: AbortSignal.timeout(3000) },
     );
-    if (!res.ok) return cachedConfig; // serve stale over nothing
-    cachedConfig = (await res.json()) as ValidatorConfig;
-    cachedAt = now;
-    return cachedConfig;
+    if (res.ok) {
+      cachedConfig = (await res.json()) as ValidatorConfig;
+      cachedAt = now;
+      configRetryAt = 0;
+      return cachedConfig;
+    }
   } catch {
-    return cachedConfig;
+    /* fall through to the failure path */
   }
+  const ra = Number(res?.headers.get('retry-after') ?? NaN);
+  const wait = Number.isFinite(ra) && ra > 0 ? Math.min(Math.max(ra * 1000, 5_000), 300_000) : CONFIG_FAILURE_BACKOFF_MS;
+  configRetryAt = now + wait;
+  return cachedConfig; // serve stale over nothing
 }
 
 function headerValue(headers: CfHeaders, name: string): string {
