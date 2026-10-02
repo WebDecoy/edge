@@ -290,17 +290,31 @@ function challengePage(apiBase: string, siteKey: string): string {
     var raw=['wdfp1',canvas32,webgl,screen.width+'x'+screen.height+'x'+screen.colorDepth,tz,navigator.platform||'na',navigator.language||'na'].join('|');
     var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw));
     var fp=Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
-    var res=await fetch(${JSON.stringify(apiBase)}+'/api/v1/clearance',{
-      method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({aid:${JSON.stringify(siteKey)},fp:fp,scope:'',ua:navigator.userAgent,webdriver:navigator.webdriver===true,headless:/HeadlessChrome/.test(navigator.userAgent)})
-    });
-    var out=await res.json();
-    if(out&&out.granted&&out.token){
-      document.cookie='wd_clearance='+out.token+'; path=/; secure; samesite=lax; max-age='+(out.expires_in||1800);
-      location.reload();return;
+    var body=JSON.stringify({aid:${JSON.stringify(siteKey)},fp:fp,scope:'',ua:navigator.userAgent,webdriver:navigator.webdriver===true,headless:/HeadlessChrome/.test(navigator.userAgent)});
+    // Retry only when WebDecoy could not be reached (#1245): network error,
+    // timeout, 429 or 5xx. An answer of "not granted" is final.
+    var waits=[0,1500,4000];
+    for(var a=0;a<waits.length;a++){
+      if(waits[a])await new Promise(function(r){setTimeout(r,waits[a]);});
+      var out=null;
+      try{
+        var ctl=new AbortController();var t=setTimeout(function(){ctl.abort();},4000);
+        var res=await fetch(${JSON.stringify(apiBase)}+'/api/v1/clearance',{method:'POST',headers:{'content-type':'application/json'},body:body,signal:ctl.signal});
+        clearTimeout(t);
+        if(res.ok)out=await res.json();
+      }catch(e){out=null;}
+      if(out&&out.granted&&out.token){
+        document.cookie='wd_clearance='+out.token+'; path=/; secure; samesite=lax; max-age='+(out.expires_in||1800);
+        location.reload();return;
+      }
+      if(out&&out.granted===false){
+        document.getElementById('spin').style.display='none';
+        msg.textContent='Verification did not pass. If you believe this is an error, contact the site owner.';
+        return;
+      }
     }
     document.getElementById('spin').style.display='none';
-    msg.textContent='Verification did not pass. If you believe this is an error, contact the site owner.';
+    msg.textContent='Verification could not complete. Please retry shortly.';
   }catch(e){
     document.getElementById('spin').style.display='none';
     msg.textContent='Verification could not complete. Please retry shortly.';
