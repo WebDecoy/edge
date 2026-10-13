@@ -117,7 +117,7 @@ async function handle(request: CfRequest): Promise<CfRequest | CfResponse> {
     setHeader(request.headers, VERDICT_HEADER, verdict.label);
     return request;
   }
-  return challenge(request);
+  return challenge(request, verdict.label);
 }
 
 interface Verdict {
@@ -254,17 +254,25 @@ function healthResponse(nonce: string, mode: string): CfResponse {
   };
 }
 
-function challenge(request: CfRequest): CfResponse {
+function challenge(request: CfRequest, label: string): CfResponse {
   const accept = headerValue(request.headers, 'accept');
   if (request.method !== 'GET' || !accept.includes('text/html')) {
+    // Keep Lambda's standalone build shape; parity is checked against the shared vectors.
+    const known = ['missing', 'invalid', 'insufficient-trust', 'revoked', 'crawler-refused', 'agent-impersonation'];
+    const reason = known.includes(label) ? label : 'denied';
+    const contract = { version: 1, reason, recoverable: ['missing', 'invalid', 'insufficient-trust'].includes(reason) };
     return {
       status: '403',
       statusDescription: 'Forbidden',
       headers: {
         'content-type': [{ key: 'Content-Type', value: 'application/json' }],
+        'cache-control': [{ key: 'Cache-Control', value: 'no-store' }],
         [VERDICT_HEADER]: [{ key: VERDICT_HEADER, value: 'challenged' }],
+        'x-wd-challenge': [{ key: 'x-wd-challenge', value: '1' }],
+        'x-wd-challenge-reason': [{ key: 'x-wd-challenge-reason', value: reason }],
+        'x-wd-challenge-recoverable': [{ key: 'x-wd-challenge-recoverable', value: String(contract.recoverable) }],
       },
-      body: JSON.stringify({ error: 'clearance required' }),
+      body: JSON.stringify({ error: 'clearance required', challenge: contract }),
     };
   }
   return {
