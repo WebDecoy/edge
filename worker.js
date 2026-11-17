@@ -70,19 +70,21 @@ async function wdDeviceFP() {
   .spin { width: 2rem; height: 2rem; margin: 0 auto 1rem; border: 3px solid #2a2f3a;
           border-top-color: #f90289; border-radius: 50%; animation: r 0.8s linear infinite; }
   @keyframes r { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
   p { color: #9aa4b2; font-size: 0.9rem; line-height: 1.5; }
-  .foot { margin-top: 2rem; font-size: 0.75rem; color: #6b7280; }
-  .foot a { color: #9aa4b2; text-decoration: none; }
+  .foot { margin-top: 2rem; font-size: 0.75rem; color: #9aa4b2; }
+  .foot a { color: #c9d1dc; text-decoration: underline; text-underline-offset: 0.15em; }
+  .foot a:focus-visible { outline: 2px solid #f90289; outline-offset: 3px; }
 </style>
 </head>
 <body>
-<div class="box">
+<main class="box" aria-labelledby="challenge-title" aria-describedby="msg">
   <div class="brand"><img src="${Wr}" alt="" width="36" height="36">WebDecoy</div>
-  <div class="spin" id="spin"></div>
-  <h1 style="font-size:1.1rem">Checking your browser</h1>
-  <p id="msg">This takes a moment and happens only once.</p>
+  <div class="spin" id="spin" aria-hidden="true"></div>
+  <h1 id="challenge-title" style="font-size:1.1rem">Checking your browser</h1>
+  <p id="msg" role="status" aria-live="polite" aria-atomic="true">This takes a moment and happens only once.</p>
   <p class="foot">This site is protected by <a href="https://webdecoy.com" rel="noopener">WebDecoy</a>.</p>
-</div>
+</main>
 <script>
 ${je}
 (async function () {
